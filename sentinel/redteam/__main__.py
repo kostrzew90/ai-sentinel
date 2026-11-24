@@ -31,6 +31,7 @@ def main() -> None:
     ap.add_argument("--modes", default=",".join(MODES))
     ap.add_argument("--scenarios", default="")
     ap.add_argument("--model-label", default=None)
+    ap.add_argument("--fail-on-hardened-success", action="store_true", help="exit 1 if any hardened attempt has outcome success")
     args = ap.parse_args()
     modes = [m for m in args.modes.split(",") if m]
     bad = set(modes) - set(MODES)
@@ -42,7 +43,13 @@ def main() -> None:
         args.model_label, progress=lambda m: print(m, file=sys.stderr, flush=True),
     )
     with Session(engine) as s:
-        print(format_table(summary(s, run_id)))
+        rows = summary(s, run_id)
+    print(format_table(rows))
+    if args.fail_on_hardened_success:
+        bad = [r for r in rows if r["mode"] == "hardened" and r["k_success"]]
+        if bad:
+            print(f"FAIL: successful attack in hardened mode: {[r['scenario'] for r in bad]}", file=sys.stderr)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

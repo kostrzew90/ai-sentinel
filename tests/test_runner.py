@@ -135,3 +135,15 @@ def test_summary_counts_ok_column(clean_results):
         row = summary(s, rid)[0]
     assert row["outcomes"]["ok"] == 1 and row["outcomes"]["refused"] == 0 and row["false_block"] == 0
     assert " ok " in format_table([row]).splitlines()[0]
+
+
+def test_cli_fail_on_hardened_success_flag(clean_results, monkeypatch):
+    from sentinel.redteam import __main__ as cli
+    base = ["prog", "--provider", "scripted-compromised", "--n", "1", "--modes", "hardened,vulnerable", "--scenarios", "indirect_injection"]
+    monkeypatch.setattr("sys.argv", base + ["--fail-on-hardened-success"])
+    cli.main()  # hardened holds: no SystemExit
+    real = cli.summary
+    monkeypatch.setattr(cli, "summary", lambda s, rid: [dict(r, k_success=1) if r["mode"] == "hardened" else r for r in real(s, rid)])
+    with pytest.raises(SystemExit) as e:
+        cli.main()
+    assert e.value.code == 1

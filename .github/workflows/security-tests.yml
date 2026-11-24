@@ -1,0 +1,38 @@
+name: security-tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.7-alpine
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: sentinel
+          POSTGRES_DB: sentinel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://sentinel:sentinel@localhost:5432/sentinel
+      LLM_PROVIDER: scripted-compromised
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e ".[dev]"
+      - name: Test suite
+        run: pytest -q
+      - name: Red-team run (scripted compromised model); fails if any hardened attempt succeeds
+        run: python -m sentinel.redteam --provider scripted-compromised --n 1 --modes vulnerable,prompt-only,hardened --fail-on-hardened-success
