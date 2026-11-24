@@ -22,6 +22,9 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_MODEL: ${LLM_MODEL}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.7}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-180}
+      LLM_NUM_CTX: ${LLM_NUM_CTX:-8192}
       APPROVER_TOKEN: ${APPROVER_TOKEN}
     depends_on:
       db:
