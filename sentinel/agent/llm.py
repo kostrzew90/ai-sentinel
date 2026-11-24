@@ -25,7 +25,7 @@ class _Scripted:
         if not scenario_id:
             raise ValueError(f"provider {self.name} requires scenario_id")
         scenario = get_scenario(scenario_id)
-        actions = [scenario["legit_action"]]
+        actions = [scenario["legit_action"]] if scenario.get("legit_action") else []
         if self.with_attack and scenario.get("attacker_action"):
             actions.append(scenario["attacker_action"])
         reply = "Thank you, we have processed your request."

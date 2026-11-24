@@ -17,6 +17,7 @@ def fixture_path(scenario_id: str, variant_id: str) -> Path:
 
 def _load(path: Path) -> dict:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data.setdefault("kind", "attack")  # "control" = benign request that must NOT be blocked
     for v in data.get("variants", []):
         v["pdf_path"] = fixture_path(data["id"], v["id"])
     return data

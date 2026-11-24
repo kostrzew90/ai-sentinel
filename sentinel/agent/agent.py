@@ -1,3 +1,4 @@
+import hashlib
 import re
 from dataclasses import dataclass, field
 
@@ -11,6 +12,7 @@ from sentinel.agent.pdf import extract_text
 from sentinel.agent.prompt import build_messages
 from sentinel.erp import service as erp
 from sentinel.models import AuditLog, PendingChange, Principal
+from sentinel.policy import engine as policy
 
 _ORDER_ID = re.compile(r"ORD-\d{4}-\d{4}")
 AGENT_PRINCIPAL = "agent-svc"
@@ -28,10 +30,8 @@ class InboxResult:
     context_possibly_truncated: bool = False
 
 
-def _audit(session, mode, run_id, tool, args, decision, reason) -> dict:
-    session.add(
-        AuditLog(mode=mode, run_id=run_id, principal=AGENT_PRINCIPAL, tool=tool, args=args, decision=decision, reason=reason)
-    )
+def _audit(session, mode, run_id, principal, tool, args, decision, reason) -> dict:
+    session.add(AuditLog(mode=mode, run_id=run_id, principal=principal, tool=tool, args=args, decision=decision, reason=reason))
     return {"tool": tool, "args": args, "decision": decision, "reason": reason}
 
 
@@ -51,6 +51,28 @@ def _execute(session: Session, principal: Principal, tool: str, args: dict) -> N
         raise erp.ErpPermissionError("unknown tool")
 
 
+def _run_hardened(session, principal, audit_principal, result, run_id, document_id) -> None:
+    """Policy first for ALL actions, then queue what needs approval. Nothing is ever executed directly."""
+    actions = result.output.actions
+    verdicts = [policy.evaluate(session, principal, a) for a in actions]
+    for i, (action, verdict) in enumerate(zip(actions, verdicts)):
+        decision, reason = verdict.decision, verdict.reason
+        if decision == "needs_approval":
+            sibling_blocked = any(v.decision in ("denied", "invalid") for j, v in enumerate(verdicts) if j != i)
+            try:
+                with session.begin_nested():
+                    change = erp.request_change(
+                        session, principal, verdict.order_id, verdict.fields,
+                        document_id=document_id, had_blocked_sibling=sibling_blocked,
+                    )
+                decision, reason = "pending", f"{reason} (change #{change.id})"
+            except erp.ErpPermissionError as exc:  # ERP validates independently of the policy engine
+                decision, reason = "denied", str(exc)
+            except Exception as exc:
+                decision, reason = "invalid", str(exc)
+        result.decisions.append(_audit(session, "hardened", run_id, audit_principal, action.tool, action.args, decision, reason))
+
+
 def process_inbox(
     session: Session,
     *,
@@ -66,18 +88,24 @@ def process_inbox(
     seed: int | None = None,
     run_id: int | None = None,
 ) -> InboxResult:
-    if mode not in ("vulnerable", "prompt-only"):
-        raise NotImplementedError("hardened mode: step 3")
+    if mode not in ("vulnerable", "prompt-only", "hardened"):
+        raise ValueError(f"unknown mode: {mode}")
 
     pdf_text = extract_text(pdf_bytes) if pdf_bytes else None
 
-    # Realistic bug: context is fetched with the service account, no ownership check against the sender.
-    svc = session.get(Principal, AGENT_PRINCIPAL)
+    if mode == "hardened":
+        # Context and execution use the sender's own authority; unverified/unknown sender = no authority at all.
+        actor = policy.resolve_sender(session, sender_email, sender_verified)
+        audit_principal = actor.id if actor else f"unverified:{sender_email}"
+    else:
+        # Realistic bug: context is fetched with the service account, no ownership check against the sender.
+        actor = session.get(Principal, AGENT_PRINCIPAL)
+        audit_principal = AGENT_PRINCIPAL
     ids = list(dict.fromkeys(_ORDER_ID.findall(f"{subject}\n{body}\n{pdf_text or ''}")))
     context = []
-    for oid in ids:
+    for oid in ids if actor is not None else []:
         try:
-            order = erp.get_order(session, svc, oid)
+            order = erp.get_order(session, actor, oid)
         except (erp.ErpValidationError, erp.ErpPermissionError):
             continue
         changes = list(session.scalars(select(PendingChange).where(PendingChange.order_id == order.id).order_by(PendingChange.id)))
@@ -98,20 +126,28 @@ def process_inbox(
     try:
         result.output = parse_model_output(llm.text)
     except InvalidOutput as exc:
-        result.decisions.append(_audit(session, mode, run_id, "(model output)", {"raw": llm.text[:2000]}, "invalid", str(exc)[:500]))
+        result.decisions.append(
+            _audit(session, mode, run_id, audit_principal, "(model output)", {"raw": llm.text[:2000]}, "invalid", str(exc)[:500])
+        )
         session.flush()
         return result
 
     result.reply = result.output.reply
+    if mode == "hardened":
+        doc_id = hashlib.sha256(f"{body}\n{pdf_text or ''}".encode()).hexdigest()[:16]
+        _run_hardened(session, actor, audit_principal, result, run_id, doc_id)
+        session.flush()
+        return result
+
     for action in result.output.actions:
         # Each action in a savepoint: a failed ERP call must not leave a half-applied change.
         try:
             with session.begin_nested():
-                _execute(session, svc, action.tool, action.args)
-            result.decisions.append(_audit(session, mode, run_id, action.tool, action.args, "executed", "ok"))
+                _execute(session, actor, action.tool, action.args)
+            result.decisions.append(_audit(session, mode, run_id, audit_principal, action.tool, action.args, "executed", "ok"))
         except (erp.ErpPermissionError, TypeError) as exc:
-            result.decisions.append(_audit(session, mode, run_id, action.tool, action.args, "denied", str(exc)))
+            result.decisions.append(_audit(session, mode, run_id, audit_principal, action.tool, action.args, "denied", str(exc)))
         except Exception as exc:  # ErpValidationError and malformed model args (wrong types etc.)
-            result.decisions.append(_audit(session, mode, run_id, action.tool, action.args, "invalid", str(exc)))
+            result.decisions.append(_audit(session, mode, run_id, audit_principal, action.tool, action.args, "invalid", str(exc)))
     session.flush()
     return result

@@ -1,4 +1,5 @@
 id: indirect_injection
+kind: attack
 title: Indirect prompt injection via hidden text in a supplier PDF
 owasp: ["LLM01:2025 Prompt Injection", "LLM06:2025 Excessive Agency"]
 actor: honest supplier forwarding a poisoned PDF

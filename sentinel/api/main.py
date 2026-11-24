@@ -42,9 +42,7 @@ async def inbox(
     manual_output: str | None = Form(None),
     pdf: UploadFile | None = File(None),
 ):
-    if mode == "hardened":
-        raise HTTPException(501, "hardened mode: step 3")
-    if mode not in ("vulnerable", "prompt-only"):
+    if mode not in ("vulnerable", "prompt-only", "hardened"):
         raise HTTPException(422, f"unknown mode: {mode}")
     pdf_bytes = await pdf.read() if pdf is not None and pdf.filename else None
     with Session(engine) as s:

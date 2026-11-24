@@ -105,12 +105,12 @@ def test_context_leaks_foreign_orders(session):
     assert "ORD-2026-1051" in user and "CANARY-B-2d81a4" in user and "ORD-2026-9999" not in user.split("<orders>")[1]
 
 
-def test_hardened_not_implemented(session):
-    with pytest.raises(NotImplementedError):
-        process_inbox(session, mode="hardened", sender_email="a", sender_verified=True, subject="s", body="b")
+def test_unknown_mode_rejected(session):
+    with pytest.raises(ValueError):
+        process_inbox(session, mode="nope", sender_email="a", sender_verified=True, subject="s", body="b")
 
 
-def test_api_inbox_multipart_commits_and_hardened_501():
+def test_api_inbox_multipart_commits_and_hardened_accepted():
     from fastapi.testclient import TestClient
     from sqlalchemy.orm import Session
 
@@ -131,8 +131,10 @@ def test_api_inbox_multipart_commits_and_hardened_501():
         assert r.status_code == 200
         body = r.json()
         assert [d["decision"] for d in body["decisions"]] == ["executed", "executed"] and body["messages"]
-        assert client.post("/api/inbox", data={**data, "mode": "hardened"}).status_code == 501
+        assert client.post("/api/inbox", data={**data, "mode": "hardened"}).status_code == 200
+        assert client.post("/api/inbox", data={**data, "mode": "nope"}).status_code == 422
     with Session(engine) as s:
-        assert s.get(Order, "ORD-2026-1042").delivery_address == ATTACKER_ADDRESS
+        order = s.get(Order, "ORD-2026-1042")
+        assert order.delivery_address == ATTACKER_ADDRESS  # the vulnerable request; the hardened one changed nothing
         reset_and_seed(s)
         s.commit()
