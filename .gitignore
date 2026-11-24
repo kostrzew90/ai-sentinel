@@ -1,0 +1,9 @@
+# Prywatne materialy planistyczne (PL) - nie publikowac
+_plan/
+Koncepcja ai sentinel.txt
+
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
