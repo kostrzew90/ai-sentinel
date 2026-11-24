@@ -58,13 +58,13 @@ def reset_and_seed(session: Session) -> None:
         for oid, sid, d, qty, price in ORDERS
     )
     session.flush()
-    # Pre-existing price-change request from a supplier (used by the approval-bypass scenario).
+    # Pre-existing quantity-increase request from a supplier (used by the approval-bypass scenario).
     session.add(
         PendingChange(
             order_id="ORD-2026-1043",
             requested_by="p-sup-a",
-            old_values={"unit_price": "310.00"},
-            new_values={"unit_price": "395.00"},
+            old_values={"quantity": 40},
+            new_values={"quantity": 900},
             status="pending",
         )
     )

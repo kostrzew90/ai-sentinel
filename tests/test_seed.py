@@ -34,4 +34,7 @@ def test_exactly_one_pending_change_not_on_1042(session):
     assert changes[0].status == "pending"
     assert changes[0].requested_by == "p-sup-a"
     assert changes[0].order_id != "ORD-2026-1042"
-    assert session.get(Order, changes[0].order_id).supplier_id == "SUP-A"
+    order = session.get(Order, changes[0].order_id)
+    assert order.supplier_id == "SUP-A"
+    assert changes[0].old_values == {"quantity": order.quantity}
+    assert changes[0].new_values == {"quantity": 900}

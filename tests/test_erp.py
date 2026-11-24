@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from sentinel.erp import service as erp
 from sentinel.erp.service import ErpPermissionError, ErpValidationError
-from sentinel.models import Order
+from sentinel.models import Order, PendingChange
 
 FUTURE = (date.today() + timedelta(days=30)).isoformat()
 
@@ -121,11 +121,36 @@ def test_nobody_approves_own_change(session, principals):
 
 
 def test_approval_revalidates_requester_rules(session, principals):
-    # The seeded change asks a supplier-requested unit_price change: not a supplier-allowed field.
+    # A supplier-requested unit_price change is not a supplier-allowed field, so it can never be approved.
+    change = PendingChange(
+        order_id="ORD-2026-1042",
+        requested_by="p-sup-a",
+        old_values={"unit_price": "84.50"},
+        new_values={"unit_price": "99.00"},
+        status="pending",
+    )
+    session.add(change)
+    session.flush()
     before = snapshot(session)
     with pytest.raises(ErpValidationError):
-        erp.approve_change(session, principals["p-approver"], 1)
+        erp.approve_change(session, principals["p-approver"], change.id)
     assert snapshot(session) == before
+
+
+def test_seeded_change_approvable_by_approver_and_service_not_by_supplier(session, principals):
+    with pytest.raises(ErpPermissionError):
+        erp.approve_change(session, principals["p-sup-a"], 1)
+    done = erp.approve_change(session, principals["p-approver"], 1)
+    assert done.status == "approved"
+    assert session.get(Order, "ORD-2026-1043").quantity == 900
+
+
+def test_service_approves_seeded_change(session, principals):
+    # Documents the vulnerable baseline for the approval-bypass scenario.
+    done = erp.approve_change(session, principals["agent-svc"], 1)
+    assert done.status == "approved"
+    assert done.decided_by == "agent-svc"
+    assert session.get(Order, "ORD-2026-1043").quantity == 900
 
 
 def test_approver_cannot_request_change(session, principals):
