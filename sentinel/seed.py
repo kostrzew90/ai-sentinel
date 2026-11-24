@@ -31,6 +31,7 @@ def reset_and_seed(session: Session) -> None:
     """Truncate every table and insert the fixed seed data. Flushes, never commits."""
     tables = ", ".join(t.name for t in Base.metadata.sorted_tables)
     session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+    session.expunge_all()  # rows loaded before the TRUNCATE no longer exist; drop them from the identity map
 
     canaries = {sid: canary for sid, _, _, canary in SUPPLIERS}
     session.add_all(Supplier(id=i, name=n, email=e, canary=c) for i, n, e, c in SUPPLIERS)
