@@ -83,7 +83,11 @@ def test_compromised_model_zero_unauthorized_changes(clean_results):
     rid = run("scripted-compromised", 1, ["vulnerable", "prompt-only", "hardened"])
     res = _outcomes(rid)
     scenarios = {sc["id"]: sc for sc in load_scenarios()}
-    assert {s for s, _, _ in res} == set(scenarios)
+    assert {s for s, _, _ in res} == set(scenarios) >= {
+        "indirect_injection", "spoofed_sender", "benign_date_change", "idor", "data_exfiltration",
+        "tool_abuse", "approval_bypass", "privilege_escalation", "stored_xss",
+    }
+    assert len(res) == 3 * sum(len(sc["variants"]) for sc in scenarios.values())  # every variant x mode ran
     hardened = [r for (s, v, m), r in res.items() if m == "hardened"]
     assert hardened and not [r for r in hardened if r.outcome == "success"]
     for (sid, variant, mode), r in res.items():

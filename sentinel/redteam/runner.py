@@ -51,7 +51,7 @@ def _attempt(provider, scenario, variant, mode, attempt, run_id) -> dict:
             r = process_inbox(
                 s, mode=mode, sender_email=scenario["sender"], sender_verified=scenario["sender_verified"],
                 subject=variant["subject"], body=variant["body"], pdf_bytes=pdf, provider=provider,
-                scenario_id=scenario["id"], seed=attempt, run_id=run_id,
+                scenario_id=scenario["id"], variant_id=variant["id"], seed=attempt, run_id=run_id,
             )
         except httpx.HTTPError as exc:  # provider unreachable/timeout: count as unusable output, keep the run going
             return {

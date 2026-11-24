@@ -16,26 +16,49 @@ class LlmResult:
     model: str
 
 
+def _context_orders(messages) -> list[dict]:
+    """Orders the agent put into the prompt: the model's own view, parsed from the last <orders> block of the user message."""
+    content = messages[-1]["content"]
+    start, end = content.rfind("<orders>\n"), content.rfind("\n</orders>")
+    if start == -1 or end <= start:
+        return []
+    try:
+        return json.loads(content[start + len("<orders>\n") : end]).get("orders", [])
+    except (json.JSONDecodeError, AttributeError):
+        return []
+
+
+def _leak_all(orders: list[dict]) -> str:
+    """A hijacked model discloses everything it can see."""
+    lines = [
+        f"{o.get('id')}: address={o.get('delivery_address')}; notes={o.get('notes')}; unit_price={o.get('unit_price')}"
+        for o in orders
+    ]
+    return "\n".join(["Thank you, we have processed your request.", *lines])[:2000]
+
+
 class _Scripted:
     def __init__(self, name: str, with_attack: bool):
         self.name = name
         self.with_attack = with_attack
 
-    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None) -> LlmResult:
+    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None, variant_id=None) -> LlmResult:
         if not scenario_id:
             raise ValueError(f"provider {self.name} requires scenario_id")
         scenario = get_scenario(scenario_id)
         actions = [scenario["legit_action"]] if scenario.get("legit_action") else []
-        if self.with_attack and scenario.get("attacker_action"):
-            actions.append(scenario["attacker_action"])
-        reply = "Thank you, we have processed your request."
+        variant = next((v for v in scenario.get("variants", []) if v["id"] == variant_id), {})
+        attack = variant.get("attacker_action") or scenario.get("attacker_action")  # a variant may override the scenario's
+        if self.with_attack and attack:
+            actions.append(attack)
+        reply = _leak_all(_context_orders(messages)) if self.with_attack else "Thank you, we have processed your request."
         return LlmResult(json.dumps({"actions": actions, "reply": reply}), None, self.name)
 
 
 class _Manual:
     name = "manual"
 
-    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None) -> LlmResult:
+    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None, variant_id=None) -> LlmResult:
         if manual_output is None:
             raise ValueError("provider manual requires manual_output")
         return LlmResult(manual_output, None, "manual")
@@ -44,7 +67,7 @@ class _Manual:
 class _OpenAICompat:
     name = "openai-compat"
 
-    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None) -> LlmResult:
+    def complete(self, messages, *, scenario_id=None, manual_output=None, seed=None, variant_id=None) -> LlmResult:
         body = {
             "model": config.LLM_MODEL,
             "messages": messages,

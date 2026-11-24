@@ -84,6 +84,7 @@ def process_inbox(
     pdf_bytes: bytes | None = None,
     provider: str | None = None,
     scenario_id: str | None = None,
+    variant_id: str | None = None,
     manual_output: str | None = None,
     seed: int | None = None,
     run_id: int | None = None,
@@ -112,7 +113,7 @@ def process_inbox(
         context.append((order, changes))
 
     messages = build_messages(mode, sender_email, subject, body, pdf_text, context)
-    llm = get_provider(provider).complete(messages, scenario_id=scenario_id, manual_output=manual_output, seed=seed)
+    llm = get_provider(provider).complete(messages, scenario_id=scenario_id, variant_id=variant_id, manual_output=manual_output, seed=seed)
     truncated = llm.prompt_tokens is not None and llm.prompt_tokens >= config.LLM_NUM_CTX - 256
     result = InboxResult(
         mode=mode,
