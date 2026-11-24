@@ -1,4 +1,5 @@
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -30,7 +31,21 @@ class InboxResult:
     context_possibly_truncated: bool = False
 
 
+def _storable(value):
+    """PostgreSQL text/JSONB cannot store NUL or NaN/Infinity; model output is arbitrary, so it must not be able to crash the audit write."""
+    if isinstance(value, str):
+        return value.replace("\x00", "\\x00")
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {_storable(k): _storable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_storable(v) for v in value]
+    return value
+
+
 def _audit(session, mode, run_id, principal, tool, args, decision, reason) -> dict:
+    tool, args, reason = _storable(tool), _storable(args), _storable(reason)
     session.add(AuditLog(mode=mode, run_id=run_id, principal=principal, tool=tool, args=args, decision=decision, reason=reason))
     return {"tool": tool, "args": args, "decision": decision, "reason": reason}
 

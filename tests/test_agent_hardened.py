@@ -128,3 +128,19 @@ def test_erp_validates_independently_of_policy(session):
                       subject="s", body="b", provider="manual", manual_output=json.dumps(out))
     assert r.decisions[0]["decision"] == "invalid"
     assert session.query(PendingChange).count() == 1  # only the seeded one
+
+
+@pytest.mark.parametrize("mode", ["hardened", "vulnerable"])
+@pytest.mark.parametrize("output", [
+    '{"actions": [{"tool": "update_order", "args": {"order_id": "\u0000"}}], "reply": ""}',
+    '{"actions": [{"tool": "x\u0000", "args": {"fields": {"notes": "a\u0000b"}}}], "reply": "r"}',
+    "\x00",
+])
+def test_nul_bytes_in_model_output_do_not_break_the_audit_write(session, mode, output):
+    """Found by the property test: NUL / NaN / Infinity in model output used to crash the audit insert (PostgreSQL rejects them)."""
+    r = process_inbox(
+        session, mode=mode, sender_email="orders@aeroparts.example", sender_verified=True, subject="s", body="ORD-2026-1042",
+        provider="manual", manual_output=output, run_id=9,
+    )
+    assert r.decisions and all(d["decision"] in ("denied", "invalid") for d in r.decisions)
+    assert session.query(AuditLog).filter_by(run_id=9).count() == len(r.decisions)

@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.2.0", "reportlab==5.1.1"]
+dev = ["pytest==9.2.0", "reportlab==5.1.1", "hypothesis==6.170.17"]
 
 [tool.setuptools.packages.find]
 include = ["sentinel*"]
