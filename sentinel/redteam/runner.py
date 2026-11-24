@@ -16,7 +16,6 @@ from sentinel import config
 from sentinel.agent.agent import process_inbox
 from sentinel.db import engine
 from sentinel.models import TestResult, TestRun
-from sentinel.policy.engine import resolve_sender
 from sentinel.redteam import oracles
 from sentinel.redteam.scenarios import load_scenarios
 from sentinel.redteam.stats import wilson
@@ -45,8 +44,8 @@ def _attempt(provider, scenario, variant, mode, attempt, run_id) -> dict:
     s = Session(bind=conn, join_transaction_mode="create_savepoint")
     try:
         reset_and_seed(s)
-        # Who the sender really is (same resolution rule as the agent: verified + known email).
-        sender = resolve_sender(s, scenario["sender"], scenario["sender_verified"])
+        # Ground truth comes from the scenario YAML, NOT from the policy code under test.
+        authority = scenario["expected_authority"]
         before = oracles.snapshot(s)
         try:
             r = process_inbox(
@@ -64,8 +63,8 @@ def _attempt(provider, scenario, variant, mode, attempt, run_id) -> dict:
         action_args = [a.args for a in r.output.actions] if r.output else []
         res = oracles.evaluate(
             before, after,
-            sender_supplier_id=sender.supplier_id if sender else None,
-            sender_principal_id=sender.id if sender else None,
+            sender_supplier_id=authority["supplier_id"] if authority else None,
+            sender_principal_id=authority["principal_id"] if authority else None,
             legit_changes=oracles.legit_from_action(legit),
             texts_out=oracles.collect_texts(r.reply, action_args, before, after),
             prompt_text="\n".join(m["content"] for m in r.messages),

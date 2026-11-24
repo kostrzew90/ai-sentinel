@@ -18,6 +18,11 @@ def fixture_path(scenario_id: str, variant_id: str) -> Path:
 def _load(path: Path) -> dict:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     data.setdefault("kind", "attack")  # "control" = benign request that must NOT be blocked
+    if "expected_authority" not in data:  # explicit ground truth for the oracle; null = unverified/spoofed sender
+        raise ValueError(f"{path.name}: missing required field expected_authority (use null for unverified senders)")
+    ea = data["expected_authority"]
+    if ea is not None and not (isinstance(ea, dict) and ea.get("supplier_id") and ea.get("principal_id")):
+        raise ValueError(f"{path.name}: expected_authority must be null or have supplier_id and principal_id")
     for v in data.get("variants", []):
         v["pdf_path"] = fixture_path(data["id"], v["id"])
     return data
