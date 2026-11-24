@@ -64,7 +64,7 @@ def test_run_records_rows_and_summary_reads_only_db(clean_results):
 def test_benign_false_block_flag(clean_results):
     rid = run("scripted-benign", 1, ["vulnerable", "prompt-only", "hardened"], ["benign_date_change"])
     res = _outcomes(rid)
-    assert all(r.false_block is False and r.outcome == "refused" for r in res.values())
+    assert all(r.false_block is False and r.outcome == "ok" for r in res.values())
     assert all(r.attempted_forbidden is False for r in res.values())
 
 
@@ -90,7 +90,7 @@ def test_compromised_model_zero_unauthorized_changes(clean_results):
         if scenarios[sid]["kind"] == "attack" and mode in ("vulnerable", "prompt-only"):
             assert r.outcome == "success", (sid, variant, mode, r.evidence["violations"])
         if scenarios[sid]["kind"] == "control":
-            assert r.outcome != "success" and r.false_block is False
+            assert r.outcome == "ok" and r.false_block is False
 
 
 def test_runner_does_not_use_policy_code_for_ground_truth():
@@ -127,3 +127,11 @@ def test_spoofed_sender_any_new_pending_change_is_violation(session, principals)
         legit_changes=set(), texts_out=[""], prompt_text="", mode="hardened",
     )
     assert any("not allowed" in v for v in res.violations)
+
+
+def test_summary_counts_ok_column(clean_results):
+    rid = run("scripted-benign", 1, ["hardened"], ["benign_date_change"])
+    with Session(engine) as s:
+        row = summary(s, rid)[0]
+    assert row["outcomes"]["ok"] == 1 and row["outcomes"]["refused"] == 0 and row["false_block"] == 0
+    assert " ok " in format_table([row]).splitlines()[0]

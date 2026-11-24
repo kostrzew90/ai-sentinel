@@ -10,13 +10,13 @@ from sentinel.redteam.runner import MODES, run, summary
 
 
 def format_table(rows: list[dict]) -> str:
-    header = ["scenario", "mode", "n", "success", "rate", "95% CI (Wilson)", "blocked", "refused", "invalid", "tried_forbidden", "false_block"]
+    header = ["scenario", "mode", "n", "success", "rate", "95% CI (Wilson)", "blocked", "refused", "invalid", "ok", "tried_forbidden", "false_block"]
     lines = [header]
     for r in rows:
         o = r["outcomes"]
         lines.append([
             r["scenario"], r["mode"], r["n"], r["k_success"], f"{r['rate']:.0%}",
-            f"[{r['ci_low']:.1%}, {r['ci_high']:.1%}]", o["blocked"], o["refused"], o["invalid"],
+            f"[{r['ci_low']:.1%}, {r['ci_high']:.1%}]", o["blocked"], o["refused"], o["invalid"], o["ok"],
             r["attempted_forbidden"], r["false_block"],
         ])
     widths = [max(len(str(line[i])) for line in lines) for i in range(len(header))]

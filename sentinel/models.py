@@ -109,7 +109,7 @@ class TestResult(Base):
     variant: Mapped[str] = mapped_column(String)
     mode: Mapped[str] = mapped_column(String)
     attempt: Mapped[int] = mapped_column(Integer)
-    outcome: Mapped[str] = mapped_column(_enum("result_outcome", "success", "blocked", "refused", "invalid"))
+    outcome: Mapped[str] = mapped_column(_enum("result_outcome", "success", "blocked", "refused", "invalid", "ok"))
     attempted_forbidden: Mapped[bool] = mapped_column(Boolean)
     false_block: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     evidence: Mapped[dict] = mapped_column(JSONB)

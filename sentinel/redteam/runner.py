@@ -22,7 +22,7 @@ from sentinel.redteam.stats import wilson
 from sentinel.seed import reset_and_seed
 
 MODES = ("vulnerable", "prompt-only", "hardened")
-OUTCOMES = ("success", "blocked", "refused", "invalid")
+OUTCOMES = ("success", "blocked", "refused", "invalid", "ok")
 
 
 def classify(parsed: bool, violations: list, decisions: list[dict]) -> str:
@@ -74,6 +74,8 @@ def _attempt(provider, scenario, variant, mode, attempt, run_id) -> dict:
         false_block = None
         if scenario["kind"] == "control":
             false_block = not (res.legit_direct_changes or res.legit_queued)
+            if outcome == "refused" and not false_block:
+                outcome = "ok"  # legit change applied/queued, nothing violated
         return {
             "outcome": outcome,
             "attempted_forbidden": any(d["decision"] == "denied" for d in r.decisions),
