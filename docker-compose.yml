@@ -1,6 +1,9 @@
 services:
   db:
     image: postgres:18.7-alpine
+    # After an unclean stop, the default crash-recovery fsync walks every file one by one, which on
+    # Docker Desktop (Windows/macOS) volumes can take hours. syncfs flushes the filesystem in one call.
+    command: ["postgres", "-c", "recovery_init_sync_method=syncfs"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
