@@ -34,6 +34,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Sentinel", lifespan=lifespan)
 
 
+# Attacker text must never run in the panel (K19). The CSP forbids inline scripts and styles,
+# so the upcoming panel must ship its JS and CSS as separate same-origin files.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; "
+        "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    return response
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
