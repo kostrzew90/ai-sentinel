@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from sentinel.erp import service as erp
 from sentinel.erp.service import ErpPermissionError, ErpValidationError
-from sentinel.models import Order, PendingChange
+from sentinel.models import Document, Order, PendingChange
 
 FUTURE = (date.today() + timedelta(days=30)).isoformat()
 
@@ -60,6 +60,8 @@ def test_supplier_cannot_approve(session, principals):
 
 
 def test_supplier_request_change_creates_pending_without_changing_order(session, principals):
+    session.add(Document(id="doc-1", sender_email="a@b.example", sender_verified=True, subject="s", body="b", blocked_actions=[]))
+    session.flush()
     before = snapshot(session)
     change = erp.request_change(
         session, principals["p-sup-a"], "ORD-2026-1042", {"delivery_date": FUTURE}, document_id="doc-1"

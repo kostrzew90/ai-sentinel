@@ -204,3 +204,20 @@ def approve_change(session: Session, principal: Principal, change_id: int) -> Pe
     change.decided_by = principal.id
     session.flush()
     return change
+
+
+def reject_change(session: Session, principal: Principal, change_id: int) -> PendingChange:
+    _check_role(principal)
+    if principal.role != "approver":
+        raise ErpPermissionError(f"reject_change not allowed for role {principal.role}")
+    change = session.get(PendingChange, change_id)
+    if change is None:
+        raise ErpValidationError("change not found")
+    if change.status != "pending":
+        raise ErpValidationError("change is not pending")
+    if change.requested_by == principal.id:
+        raise ErpPermissionError("nobody may decide their own change")
+    change.status = "rejected"
+    change.decided_by = principal.id
+    session.flush()
+    return change

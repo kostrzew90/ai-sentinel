@@ -12,7 +12,7 @@ from sentinel.agent.output import AgentOutput, InvalidOutput, parse_model_output
 from sentinel.agent.pdf import extract_text
 from sentinel.agent.prompt import build_messages
 from sentinel.erp import service as erp
-from sentinel.models import AuditLog, PendingChange, Principal
+from sentinel.models import AuditLog, Document, PendingChange, Principal
 from sentinel.policy import engine as policy
 
 _ORDER_ID = re.compile(r"ORD-\d{4}-\d{4}")
@@ -66,10 +66,25 @@ def _execute(session: Session, principal: Principal, tool: str, args: dict) -> N
         raise erp.ErpPermissionError("unknown tool")
 
 
-def _run_hardened(session, principal, audit_principal, result, run_id, document_id) -> None:
+def _store_document(session, document_id, doc: dict, actions, verdicts) -> None:
+    """Keep the source document (plain text) for the approver, with the denied/invalid actions of the same output."""
+    if session.get(Document, document_id) is not None:
+        return
+    blocked = [
+        {"tool": a.tool, "args": a.args, "reason": v.reason}
+        for a, v in zip(actions, verdicts)
+        if v.decision in ("denied", "invalid")
+    ]
+    session.add(Document(id=document_id, blocked_actions=_storable(blocked), **{k: _storable(v) for k, v in doc.items()}))
+    session.flush()
+
+
+def _run_hardened(session, principal, audit_principal, result, run_id, document_id, doc) -> None:
     """Policy first for ALL actions, then queue what needs approval. Nothing is ever executed directly."""
     actions = result.output.actions
     verdicts = [policy.evaluate(session, principal, a) for a in actions]
+    if any(v.decision == "needs_approval" for v in verdicts):
+        _store_document(session, document_id, doc, actions, verdicts)
     for i, (action, verdict) in enumerate(zip(actions, verdicts)):
         decision, reason = verdict.decision, verdict.reason
         if decision == "needs_approval":
@@ -151,7 +166,8 @@ def process_inbox(
     result.reply = result.output.reply
     if mode == "hardened":
         doc_id = hashlib.sha256(f"{body}\n{pdf_text or ''}".encode()).hexdigest()[:16]
-        _run_hardened(session, actor, audit_principal, result, run_id, doc_id)
+        doc = {"sender_email": sender_email, "sender_verified": sender_verified, "subject": subject, "body": body, "pdf_text": pdf_text}
+        _run_hardened(session, actor, audit_principal, result, run_id, doc_id, doc)
         session.flush()
         return result
 

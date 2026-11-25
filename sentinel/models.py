@@ -56,6 +56,21 @@ class Order(Base):
     notes: Mapped[str] = mapped_column(String)
 
 
+class Document(Base):
+    """The inbound document a change came from, kept as plain text for the approver view."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)  # short sha256 of body + pdf text
+    sender_email: Mapped[str] = mapped_column(String)
+    sender_verified: Mapped[bool] = mapped_column(Boolean)
+    subject: Mapped[str] = mapped_column(String)
+    body: Mapped[str] = mapped_column(String)
+    pdf_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    blocked_actions: Mapped[list] = mapped_column(JSONB, default=list)  # [{tool, args, reason}] denied/invalid siblings
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PendingChange(Base):
     __tablename__ = "pending_changes"
 
@@ -64,7 +79,7 @@ class PendingChange(Base):
     requested_by: Mapped[str] = mapped_column(ForeignKey("principals.id"))
     old_values: Mapped[dict] = mapped_column(JSONB)
     new_values: Mapped[dict] = mapped_column(JSONB)
-    document_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
     had_blocked_sibling: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(_enum("change_status", "pending", "approved", "rejected"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
