@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI Sentinel", lifespan=lifespan)
+app = FastAPI(title="AI Sentinel", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # Attacker text must never run in the panel (K19). The CSP forbids inline scripts and styles,

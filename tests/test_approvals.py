@@ -195,3 +195,25 @@ def test_document_idempotent_and_only_stored_when_queued(session):
     process_inbox(session, mode="hardened", sender_email=xss["sender"], sender_verified=True, subject=xv["subject"],
                   body=xv["body"], provider="scripted-compromised", scenario_id=xss["id"])
     assert session.query(Document).count() == 1  # nothing queued -> nothing stored
+
+
+def test_same_text_from_two_senders_gets_two_documents(client):
+    output = json.dumps({"actions": [{"tool": "update_order", "args": {"order_id": "ORD-2026-1051", "fields": {"quantity": 5}}}], "reply": "ok"})
+    output_a = output.replace("1051", "1042")
+    for email, out in (("orders@aeroparts.example", output_a), ("orders@skybolt.example", output)):
+        r = client.post("/api/inbox", data={
+            "sender_email": email, "sender_verified": "true", "subject": "same", "body": "identical body ORD-2026-1042 ORD-2026-1051",
+            "mode": "hardened", "provider": "manual", "manual_output": out,
+        })
+        assert r.status_code == 200
+    items = {a["order_id"]: a for a in client.get("/api/approvals", headers=AUTH).json() if a["id"] != 1}
+    assert items["ORD-2026-1042"]["sender_email"] == "orders@aeroparts.example"
+    assert items["ORD-2026-1051"]["sender_email"] == "orders@skybolt.example"
+    from sentinel.models import Document
+    with Session(engine) as s:
+        assert s.query(Document).count() == 2
+
+
+def test_api_docs_disabled(client):
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404

@@ -165,7 +165,9 @@ def process_inbox(
 
     result.reply = result.output.reply
     if mode == "hardened":
-        doc_id = hashlib.sha256(f"{body}\n{pdf_text or ''}".encode()).hexdigest()[:16]
+        # Sender identity is part of the id: the same text from another sender must not reuse (and mislabel) a document.
+        key = "\n".join([sender_email.strip().lower(), str(sender_verified), subject, body, pdf_text or ""])
+        doc_id = hashlib.sha256(key.encode()).hexdigest()[:16]
         doc = {"sender_email": sender_email, "sender_verified": sender_verified, "subject": subject, "body": body, "pdf_text": pdf_text}
         _run_hardened(session, actor, audit_principal, result, run_id, doc_id, doc)
         session.flush()
